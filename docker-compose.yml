@@ -1,0 +1,43 @@
+name: aws-emulator
+
+services:
+  emulator:
+    build:
+      context: .
+      args:
+        EMULATOR_ARCH: ${EMULATOR_ARCH:-aarch64}
+        EMULATOR_CHANNEL: ${EMULATOR_CHANNEL:-LTS/latest}
+    image: ${EMULATOR_IMAGE:-aws-emulator:local}
+    container_name: aws-emulator
+
+    # Siempre 127.0.0.1. Un "9297:9297" pelado abriría el emulador a toda la red.
+    ports:
+      - "127.0.0.1:${EMULATOR_PORT:-9297}:${EMULATOR_PORT:-9297}"
+
+    environment:
+      # Mismo HOME que en el host, para que las rutas del config.toml y del
+      # mensaje de arranque sean válidas también fuera del contenedor.
+      HOME: ${HOME}
+      EMULATOR_TELEMETRY: "off"
+
+    # Expone ~/.aws/emulator/<puerto>/ al host: ahí el emulador escribe las
+    # credenciales efímeras, el config del SDK y ca.pem, que env.sh necesita.
+    volumes:
+      - "${HOME}/.aws/emulator:${HOME}/.aws/emulator"
+
+    command: ["-p", "${EMULATOR_PORT:-9297}", "--telemetry", "off"]
+
+    # Si se pasa de 2 GiB muere con exit 137 y se pierde todo el estado emulado
+    # (vive solo en memoria). Subí el valor si trabajás con datasets grandes.
+    mem_limit: ${EMULATOR_MEMORY:-2g}
+    memswap_limit: ${EMULATOR_MEMORY:-2g}
+
+    # El emulador sirve HTTPS con certificado autofirmado, de ahí el -k.
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://127.0.0.1:${EMULATOR_PORT:-9297}/__admin/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    stop_grace_period: 10s
